@@ -1,15 +1,32 @@
 from flask import Flask, request, jsonify
 from flask_cors import CORS
-import subprocess
+import os
+import requests
 
 app = Flask(__name__)
-
-# Restrict CORS to your frontend only
 CORS(app, resources={r"/scan": {"origins": "https://bugxploit.netlify.app"}})
 
 @app.route('/')
 def home():
     return jsonify({"status": "BugXploit API is live"}), 200
+
+def get_subdomains_crtsh(domain):
+    try:
+        url = f"https://crt.sh/?q=%25.{domain}&output=json"
+        response = requests.get(url, timeout=15)
+        if response.ok:
+            data = response.json()
+            subdomains = set()
+            for entry in data:
+                name = entry['name_value']
+                for sub in name.split('\n'):
+                    if '*' not in sub:
+                        subdomains.add(sub.strip())
+            return list(sorted(subdomains))
+        else:
+            return ["Failed to fetch data"]
+    except Exception as e:
+        return [f"Error fetching subdomains: {str(e)}"]
 
 @app.route('/scan', methods=['POST'])
 def scan():
@@ -20,24 +37,16 @@ def scan():
         return jsonify({"error": "No target provided"}), 400
 
     try:
-        # Run Subfinder
-        subfinder_cmd = ["subfinder", "-d", target, "-silent"]
-        subfinder_result = subprocess.run(subfinder_cmd, capture_output=True, text=True, timeout=30)
-
-        # Run Nmap
-        nmap_cmd = ["nmap", "-T4", "--top-ports", "100", target]
-        nmap_result = subprocess.run(nmap_cmd, capture_output=True, text=True, timeout=60)
+        subdomains = get_subdomains_crtsh(target)
 
         return jsonify({
-            "subdomains": subfinder_result.stdout.splitlines(),
-            "nmap": nmap_result.stdout
+            "subdomains": subdomains,
+            "nmap": "⚠️ Nmap not available on Render. Switch to VPS for full port scans."
         })
 
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
-import os
-
 if __name__ == '__main__':
-    port = int(os.environ.get("PORT", 5000))  # Render sets PORT dynamically
+    port = int(os.environ.get("PORT", 5000))
     app.run(host="0.0.0.0", port=port)
