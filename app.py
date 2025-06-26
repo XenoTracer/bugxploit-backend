@@ -13,20 +13,34 @@ def home():
 def get_subdomains_crtsh(domain):
     try:
         url = f"https://crt.sh/?q=%25.{domain}&output=json"
-        response = requests.get(url, timeout=15)
-        if response.ok:
+        headers = {
+            "User-Agent": "Mozilla/5.0"
+        }
+        response = requests.get(url, headers=headers, timeout=15)
+
+        if not response.ok:
+            return ["⚠️ crt.sh returned an error."]
+
+        try:
             data = response.json()
-            subdomains = set()
-            for entry in data:
-                name = entry['name_value']
+        except Exception:
+            return ["⚠️ crt.sh did not return valid JSON."]
+
+        subdomains = set()
+        for entry in data:
+            name = entry.get('name_value')
+            if name:
                 for sub in name.split('\n'):
                     if '*' not in sub:
                         subdomains.add(sub.strip())
-            return list(sorted(subdomains))
-        else:
-            return ["Failed to fetch data"]
+
+        if not subdomains:
+            return ["⚠️ No subdomains found. Domain might not have SSL certificates."]
+
+        return list(sorted(subdomains))
+
     except Exception as e:
-        return [f"Error fetching subdomains: {str(e)}"]
+        return [f"❌ Error: {str(e)}"]
 
 @app.route('/scan', methods=['POST'])
 def scan():
